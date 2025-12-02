@@ -4,7 +4,7 @@
 using namespace sf;
 
 struct NetLogicStates {
-	int messageType;
+	UINT8 messageType;
 	int seqNum;
 	float p1Y = 0.f;
 	float p2Y = 0.f;
@@ -14,6 +14,15 @@ struct NetLogicStates {
 	float ballVelY = 0.f;
 	unsigned int p1Score = 0;
 	unsigned int p2Score = 0;
+};
+
+enum MessageTypes : uint8_t {
+	FIND_HOST = 1,
+	HOST_HERE = 2,
+	HELLO = 3,
+	HELLO_ACK = 4,
+	GUEST_INPUT = 5,
+	STATE_UPDATE = 6
 };
 
 class HostNetworkController
