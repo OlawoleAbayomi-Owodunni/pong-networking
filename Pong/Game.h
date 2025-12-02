@@ -100,6 +100,8 @@ protected:
 	/// </summary>
 	void resetGame();
 	void multiplayerMode(); // start multiplayer/network mode stub
+	void waitingForClient(); // after Host selected
+	void waitingForHost();   // after Join selected
 
 	// Font used for all text
 	sf::Font m_arialFont{ "ASSETS/FONTS/ariblk.ttf" };
@@ -125,6 +127,16 @@ protected:
 	sf::Text m_menuText1{ m_arialFont };
 	sf::Text m_menuText2{ m_arialFont };
 	sf::Text m_menuText3{ m_arialFont };
+
+	// Multiplayer modal state and UI
+	bool m_showMultiplayerModal{ false };
+	sf::RectangleShape m_modalRect;
+	sf::RectangleShape m_modalHostBtn;
+	sf::RectangleShape m_modalJoinBtn;
+	sf::Text m_modalTitle{ m_arialFont };
+	sf::Text m_modalHostText{ m_arialFont };
+	sf::Text m_modalJoinText{ m_arialFont };
+	sf::Text m_modalStatusText{ m_arialFont };
 
 	GameState m_state{ GameState::MainMenu };
 

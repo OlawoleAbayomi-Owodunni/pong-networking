@@ -120,6 +120,51 @@ void Game::init()
 	centerTextInRect(m_menuText2, m_menuOption2);
 	centerTextInRect(m_menuText3, m_menuOption3);
 
+	// Multiplayer modal UI
+	m_modalRect.setSize(sf::Vector2f(600.f, 400.f));
+	m_modalRect.setFillColor(sf::Color(30, 30, 30, 220));
+	m_modalRect.setOutlineThickness(2.f);
+	m_modalRect.setOutlineColor(sf::Color::White);
+	m_modalRect.setPosition(sf::Vector2f(ScreenSize::s_width / 2.f - 300.f, ScreenSize::s_height / 2.f - 200.f));
+
+	m_modalTitle.setFont(m_arialFont);
+	m_modalTitle.setString("Multiplayer");
+	m_modalTitle.setCharacterSize(42);
+	m_modalTitle.setFillColor(sf::Color::White);
+	auto tb = m_modalTitle.getLocalBounds();
+	sf::Vector2f tbOrigin(tb.position.x + tb.size.x / 2.f, tb.position.y + tb.size.y / 2.f);
+	m_modalTitle.setOrigin(tbOrigin);
+	m_modalTitle.setPosition(sf::Vector2f(ScreenSize::s_width / 2.f, ScreenSize::s_height / 2.f - 140.f));
+
+	m_modalHostBtn.setSize(sf::Vector2f(220.f, 70.f));
+	m_modalJoinBtn.setSize(sf::Vector2f(220.f, 70.f));
+	m_modalHostBtn.setFillColor(sf::Color(80, 160, 255));
+	m_modalJoinBtn.setFillColor(sf::Color(255, 160, 80));
+	float modalCenterX = ScreenSize::s_width / 2.f;
+	float modalCenterY = ScreenSize::s_height / 2.f;
+	m_modalHostBtn.setPosition(sf::Vector2f(modalCenterX - 240.f, modalCenterY - 40.f));
+	m_modalJoinBtn.setPosition(sf::Vector2f(modalCenterX + 20.f, modalCenterY - 40.f));
+
+	m_modalHostText.setFont(m_arialFont);
+	m_modalJoinText.setFont(m_arialFont);
+	m_modalHostText.setString("Host");
+	m_modalJoinText.setString("Join");
+	m_modalHostText.setCharacterSize(32);
+	m_modalJoinText.setCharacterSize(32);
+	m_modalHostText.setFillColor(sf::Color::White);
+	m_modalJoinText.setFillColor(sf::Color::White);
+	centerTextInRect(m_modalHostText, m_modalHostBtn);
+	centerTextInRect(m_modalJoinText, m_modalJoinBtn);
+
+	m_modalStatusText.setFont(m_arialFont);
+	m_modalStatusText.setCharacterSize(24);
+	m_modalStatusText.setFillColor(sf::Color(200, 200, 200));
+	m_modalStatusText.setString("");
+	m_modalStatusText.setPosition(sf::Vector2f(modalCenterX, modalCenterY + 110.f));
+	auto sb = m_modalStatusText.getLocalBounds();
+	sf::Vector2f sbOrigin(sb.position.x + sb.size.x / 2.f, sb.position.y + sb.size.y / 2.f);
+	m_modalStatusText.setOrigin(sbOrigin);
+
 	resetGame();
 	m_state = GameState::MainMenu;
 }
@@ -201,7 +246,9 @@ void Game::processGameEvents(const sf::Event& event)
 			else
 			{
 				m_state = GameState::MainMenu;
-				resetGame(); // ensure clean state when returning
+				m_showMultiplayerModal = false;
+				m_modalStatusText.setString("");
+				resetGame();
 			}
 			break;
 		case sf::Keyboard::Scancode::Enter:
@@ -219,137 +266,46 @@ void Game::processGameEvents(const sf::Event& event)
 	{
 		if (const auto* mousePressed = event.getIf<sf::Event::MouseButtonPressed>())
 		{
-			// Assume button integral value 0 corresponds to left click; avoids enumerator dependency.
 			if (static_cast<int>(mousePressed->button) == 0)
 			{
 				sf::Vector2f mousePos(static_cast<float>(mousePressed->position.x), static_cast<float>(mousePressed->position.y));
 				auto inRect = [&](const sf::RectangleShape& r){ return r.getGlobalBounds().contains(mousePos); };
-				if (inRect(m_menuOption1))
+				if (m_showMultiplayerModal)
 				{
-					m_state = GameState::Playing;
-					resetGame();
+					if (inRect(m_modalHostBtn))
+					{
+						waitingForClient();
+						m_modalStatusText.setString("waiting for client");
+						auto sb2 = m_modalStatusText.getLocalBounds();
+						m_modalStatusText.setOrigin(sf::Vector2f(sb2.position.x + sb2.size.x / 2.f, sb2.position.y + sb2.size.y / 2.f));
+					}
+					else if (inRect(m_modalJoinBtn))
+					{
+						waitingForHost();
+						m_modalStatusText.setString("waiting for host");
+						auto sb3 = m_modalStatusText.getLocalBounds();
+						m_modalStatusText.setOrigin(sf::Vector2f(sb3.position.x + sb3.size.x / 2.f, sb3.position.y + sb3.size.y / 2.f));
+					}
 				}
-				else if (inRect(m_menuOption2))
+				else
 				{
-					multiplayerMode();
-				}
-				else if (inRect(m_menuOption3))
-				{
-					m_window.close();
+					if (inRect(m_menuOption1))
+					{
+						m_state = GameState::Playing;
+						resetGame();
+					}
+					else if (inRect(m_menuOption2))
+					{
+						multiplayerMode();
+						m_showMultiplayerModal = true;
+					}
+					else if (inRect(m_menuOption3))
+					{
+						m_window.close();
+					}
 				}
 			}
 		}
-	}
-}
-
-void Game::update(double dt)
-{
-	float floatSeconds = static_cast<float>(dt) / 1000.f;
-	if (m_state == GameState::MainMenu)
-	{
-		return;
-	}
-	if (m_gameOver)
-	{
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space))
-		{
-			resetGame();
-		}
-		return;
-	}
-	{
-	if (!m_isNetworkedGame) {
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
-		{
-			m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
-		{
-			m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
-		{
-			m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
-		{
-			m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-		}
-	}
-	auto clampPaddle = [&](sf::RectangleShape& paddle)
-		{
-			if (paddle.getPosition().y < 0.f)
-				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
-			if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
-				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
-		};
-	clampPaddle(m_leftPaddle);
-	clampPaddle(m_rightPaddle);
-	}
-	m_ball.move(m_ballVelocity * floatSeconds);
-	if (m_ball.getPosition().y <= 0.f)
-	{
-		m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, 0.f));
-		m_ballVelocity.y = -m_ballVelocity.y;
-	}
-	if (m_ball.getPosition().y + m_ball.getRadius() * 2.f >= (float)ScreenSize::s_height)
-	{
-		m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, (float)ScreenSize::s_height - m_ball.getRadius() * 2.f));
-		m_ballVelocity.y = -m_ballVelocity.y;
-	}
-	{
-	auto ballPos = m_ball.getPosition();
-	auto ballSize = sf::Vector2f(m_ball.getRadius() * 2.f, m_ball.getRadius() * 2.f);
-	auto lp = m_leftPaddle.getPosition();
-	auto lsize = m_leftPaddle.getSize();
-	bool intersectsLeft = !(ballPos.x + ballSize.x < lp.x || ballPos.x > lp.x + lsize.x ||
-				ballPos.y + ballSize.y < lp.y || ballPos.y > lp.y + lsize.y);
-	if (intersectsLeft)
-	{
-		m_ball.setPosition(sf::Vector2f(lp.x + lsize.x + 0.1f, ballPos.y));
-		m_ballVelocity.x = std::abs(m_ballVelocity.x);
-	}
-	auto rp = m_rightPaddle.getPosition();
-	auto rsize = m_rightPaddle.getSize();
-	bool intersectsRight = !(ballPos.x + ballSize.x < rp.x || ballPos.x > rp.x + rsize.x ||
-				ballPos.y + ballSize.y < rp.y || ballPos.y > rp.y + rsize.y);
-	if (intersectsRight)
-	{
-		m_ball.setPosition(sf::Vector2f(rp.x - ballSize.x - 0.1f, ballPos.y));
-		m_ballVelocity.x = -std::abs(m_ballVelocity.x);
-	}
-	}
-	if (m_ball.getPosition().x < -50.f)
-	{
-		m_rightScore++;
-		m_rightScoreText.setString(std::to_string(m_rightScore));
-		m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
-		m_ballVelocity = sf::Vector2f(-400.f, -250.f);
-	}
-	else if (m_ball.getPosition().x > (float)ScreenSize::s_width + 50.f)
-	{
-		m_leftScore++;
-		m_leftScoreText.setString(std::to_string(m_leftScore));
-		m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
-		m_ballVelocity = sf::Vector2f(400.f, 250.f);
-	}
-	if (m_leftScore >= m_winScore)
-	{
-		m_gameOver = true;
-		m_overlayText.setString("Player 1\nWins!\nPress Space to\nRestart");
-		auto bounds = m_overlayText.getLocalBounds();
-		sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
-		m_overlayText.setOrigin(origin);
-		m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
-	}
-	else if (m_rightScore >= m_winScore)
-	{
-		m_gameOver = true;
-		m_overlayText.setString("Player 2\nWins!\nPress Space to\nRestart");
-		auto bounds = m_overlayText.getLocalBounds();
-		sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
-		m_overlayText.setOrigin(origin);
-		m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
 	}
 }
 
@@ -368,6 +324,16 @@ void Game::render()
 		m_window.draw(m_menuText1);
 		m_window.draw(m_menuText2);
 		m_window.draw(m_menuText3);
+		if (m_showMultiplayerModal)
+		{
+			m_window.draw(m_modalRect);
+			m_window.draw(m_modalTitle);
+			m_window.draw(m_modalHostBtn);
+			m_window.draw(m_modalJoinBtn);
+			m_window.draw(m_modalHostText);
+			m_window.draw(m_modalJoinText);
+			m_window.draw(m_modalStatusText);
+		}
 		m_window.display();
 		return;
 	}
@@ -387,5 +353,149 @@ void Game::render()
 
 void Game::multiplayerMode()
 {
-	// TODO: implement networking / online setup here later.
+	m_isNetworkedGame = true;
+	m_modalStatusText.setString("");
+}
+
+void Game::waitingForClient()
+{
+	// TODO: implement host waiting logic
+}
+
+void Game::waitingForHost()
+{
+	// TODO: implement client waiting logic
+}
+
+void Game::update(double dt)
+{
+    // dt arrives in milliseconds; convert to seconds
+    float floatSeconds = static_cast<float>(dt) / 1000.f;
+
+    // Do not update gameplay while in main menu
+    if (m_state == GameState::MainMenu)
+    {
+        return;
+    }
+
+    // If game over listen for space to restart
+    if (m_gameOver)
+    {
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space))
+        {
+            resetGame();
+        }
+        return;
+    }
+
+    // Player input - left paddle: W/S, right paddle: Up/Down
+    if (!m_isNetworkedGame)
+    {
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+        {
+            m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+        }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+        {
+            m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+        }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+        {
+            m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+        }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+        {
+            m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+        }
+    }
+
+    // Keep paddles inside the screen
+    auto clampPaddle = [&](sf::RectangleShape& paddle)
+    {
+        if (paddle.getPosition().y < 0.f)
+            paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
+        if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
+            paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
+    };
+    clampPaddle(m_leftPaddle);
+    clampPaddle(m_rightPaddle);
+
+    // Move ball
+    m_ball.move(m_ballVelocity * floatSeconds);
+
+    // Ball collision with top/bottom
+    if (m_ball.getPosition().y <= 0.f)
+    {
+        m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, 0.f));
+        m_ballVelocity.y = -m_ballVelocity.y;
+    }
+    if (m_ball.getPosition().y + m_ball.getRadius() * 2.f >= (float)ScreenSize::s_height)
+    {
+        m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, (float)ScreenSize::s_height - m_ball.getRadius() * 2.f));
+        m_ballVelocity.y = -m_ballVelocity.y;
+    }
+
+    // Ball collision with paddles (AABB using positions and sizes)
+    {
+        auto ballPos = m_ball.getPosition();
+        auto ballSize = sf::Vector2f(m_ball.getRadius() * 2.f, m_ball.getRadius() * 2.f);
+
+        auto lp = m_leftPaddle.getPosition();
+        auto lsize = m_leftPaddle.getSize();
+        bool intersectsLeft = !(ballPos.x + ballSize.x < lp.x || ballPos.x > lp.x + lsize.x ||
+                                ballPos.y + ballSize.y < lp.y || ballPos.y > lp.y + lsize.y);
+        if (intersectsLeft)
+        {
+            m_ball.setPosition(sf::Vector2f(lp.x + lsize.x + 0.1f, ballPos.y));
+            m_ballVelocity.x = std::abs(m_ballVelocity.x);
+        }
+
+        auto rp = m_rightPaddle.getPosition();
+        auto rsize = m_rightPaddle.getSize();
+        bool intersectsRight = !(ballPos.x + ballSize.x < rp.x || ballPos.x > rp.x + rsize.x ||
+                                 ballPos.y + ballSize.y < rp.y || ballPos.y > rp.y + rsize.y);
+        if (intersectsRight)
+        {
+            m_ball.setPosition(sf::Vector2f(rp.x - ballSize.x - 0.1f, ballPos.y));
+            m_ballVelocity.x = -std::abs(m_ballVelocity.x);
+        }
+    }
+
+    // Ball out of bounds - simple reset and score
+    if (m_ball.getPosition().x < -50.f)
+    {
+        // right player scores
+        m_rightScore++;
+        m_rightScoreText.setString(std::to_string(m_rightScore));
+        m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
+        m_ballVelocity = sf::Vector2f(-400.f, -250.f);
+    }
+    else if (m_ball.getPosition().x > (float)ScreenSize::s_width + 50.f)
+    {
+        // left player scores
+        m_leftScore++;
+        m_leftScoreText.setString(std::to_string(m_leftScore));
+        m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
+        m_ballVelocity = sf::Vector2f(400.f, 250.f);
+    }
+
+    // Check win conditions
+    if (m_leftScore >= m_winScore)
+    {
+        m_gameOver = true;
+        m_overlayText.setString("Player 1\nWins!\nPress Space to\nRestart");
+        auto bounds = m_overlayText.getLocalBounds();
+        sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+        m_overlayText.setOrigin(origin);
+        m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+    }
+    else if (m_rightScore >= m_winScore)
+    {
+        m_gameOver = true;
+        m_overlayText.setString("Player 2\nWins!\nPress Space to\nRestart");
+        auto bounds = m_overlayText.getLocalBounds();
+        sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+        m_overlayText.setOrigin(origin);
+        m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+    }
 }
