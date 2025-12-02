@@ -181,4 +181,13 @@ protected:
 	bool m_isHost{ false };
 	int m_seq{ 0 };
 	GuestNetworkController m_guestNet;
+
+	//Interpolation variables
+	NetLogicStates m_prevState;
+	NetLogicStates m_currState;
+
+	bool m_hasPrev = false;
+	bool m_hasCurr = false;
+
+	float m_interpAlpha = 0.0f; // 0 -> using prev state , 1 -> using curr state
 };

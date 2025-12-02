@@ -127,9 +127,82 @@ bool GuestNetworkController::recieveHelloAck()
 
 void GuestNetworkController::sendInput(int8_t inputY)
 {
+	if(!m_isConnected) {
+		cout << "GuestNetworkController: Cannot send input - not connected to host" << endl;
+		return;
+	}
+
+	// Build GUEST_INPUT packet
+	uint8_t buffer[4];
+	buffer[0] = MessageTypes::GUEST_INPUT;
+
+	// Tick placeholder (0) - host currently doesn't use this
+	buffer[1] = 0;
+	buffer[2] = 0;
+
+	// Input Y (byte 3)
+	buffer[3] = static_cast<uint8_t>(inputY);
+
+	auto status = m_socket.send(buffer, sizeof(buffer), m_hostAddress, m_hostPort);
+
+	if(status != Socket::Status::Done)
+	{
+		cout << "GuestNetworkController: Failed to send GUEST_INPUT to "
+			<< m_hostAddress.toString() << ":" << m_hostPort << endl;
+		return;
+	}
 }
 
-bool GuestNetworkController::recieveState(NetLogicStates& state)
+bool GuestNetworkController::recieveStateUpdate(NetLogicStates& state)
 {
-	return false;
+	char buffer[64];
+	size_t recieved = 0;
+	optional<sf::IpAddress> sender;
+	unsigned short senderPort = 0;
+
+	Socket::Status status = m_socket.receive(buffer, sizeof(buffer), recieved, sender, senderPort);
+
+	// ---- ERROR CHECKS ----
+	if (status != Socket::Status::Done)
+		return false;
+
+	if (!sender.has_value() || recieved < 31) // 1 + 4 + 24 + 2 = 31 bytes minimum
+		return false;
+
+	uint8_t msgType = buffer[0];
+	if (msgType != MessageTypes::STATE_UPDATE)
+		return false;
+
+	// ---- Extract state ----
+	size_t offset = 1;
+
+	// Sequence number (4 bytes, big-endian)
+	uint32_t seq = 0;
+	seq |= (static_cast<uint8_t>(buffer[offset]) << 24);
+	seq |= (static_cast<uint8_t>(buffer[offset + 1]) << 16);
+	seq |= (static_cast<uint8_t>(buffer[offset + 2]) << 8);
+	seq |= static_cast<uint8_t>(buffer[offset + 3]);
+
+	auto readFloat = [&](float f) { // lambda to read float from 4 bytes
+		memcpy(&f, buffer + offset, sizeof(float));
+		offset += sizeof(float);
+		};
+
+	// message size (1 byte) and seqNum (4 bytes)
+	state.messageType = msgType;
+	state.seqNum = static_cast<int>(seq);
+
+	// Floats (4 bytes each)
+	readFloat(state.p1Y);
+	readFloat(state.p2Y);
+	readFloat(state.ballX);
+	readFloat(state.ballY);
+	readFloat(state.ballVelX);
+	readFloat(state.ballVelY);
+
+	// Scores (2 bytes, big-endian)
+	state.p1Score = static_cast<uint8_t>(buffer[offset++]);
+	state.p2Score = static_cast<uint8_t>(buffer[offset++]);
+
+	return true;
 }

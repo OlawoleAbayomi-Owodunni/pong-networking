@@ -17,7 +17,7 @@ public:
 
 	//Gameplay traffic
 	void sendInput(int8_t inputY);
-	bool recieveState(NetLogicStates& state);
+	bool recieveStateUpdate(NetLogicStates& state);
 
 	//Host connection info
 	bool isConncected() const { return m_isConnected; }
