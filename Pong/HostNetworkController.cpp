@@ -85,8 +85,8 @@ bool HostNetworkController::pollForHello()
 	if (!sender.has_value() || recieved < 1)
 		return false;
 
-	uint8_t messageType = data[0];
-	if(messageType != MessageTypes::HELLO)
+	uint8_t msgType = data[0];
+	if(msgType != MessageTypes::HELLO)
 		return false;
 
 	// The HELLO packet should contain the gameplay recieve port for the guest
@@ -118,3 +118,79 @@ bool HostNetworkController::pollForHello()
 		<< m_guestAddress.toString() << ":" << m_guestPort <<
 		" -> HELLO_ACK sent" << endl;
 }
+
+int8_t HostNetworkController::recieveGuestInput()
+{
+	Buffer buffer;
+
+	// Non-blocking recieve
+	auto status = m_socket.receive(buffer.data, sizeof(buffer.data), buffer.recieved, buffer.sender, buffer.senderPort);
+
+	// ---- ERROR CHECKS ----
+	if (status != Socket::Status::Done)
+		return m_latestGuestInput; // no data recieved
+
+	if (!buffer.sender.has_value() || buffer.recieved < 1)
+		return m_latestGuestInput; // invalid packet
+	
+	uint8_t msgType = buffer.data[0];
+
+	if (msgType != MessageTypes::GUEST_INPUT)
+		return m_latestGuestInput; // not a GUEST_INPUT packet
+
+	// ---- Extract input ----
+	if (buffer.recieved < 4)
+		return m_latestGuestInput;
+	int8_t guestInput = static_cast<int8_t>(buffer.data[3]);
+	
+	m_latestGuestInput = guestInput;
+
+	return m_latestGuestInput;
+}
+
+void HostNetworkController::sendStateUpdate(const NetLogicStates& state)
+{
+	// Build binary packet
+	uint8_t buffer[64]; // more than enough space for packet 
+						//[Size = 1 (msg) + 4 (seq) + 4*6 (floats) + 2 (scores) = 1 + 4 + 24 + 2 = 31 bytes]
+	size_t offset = 0;
+
+	// messageType (1 byte)
+	buffer[offset++] = static_cast<uint8_t>(state.messageType);
+
+	// seqNum (int, 4 bytes, big-endian)
+	buffer[offset++] = (state.seqNum >> 24) & 0xFF;
+	buffer[offset++] = (state.seqNum >> 16) & 0xFF;
+	buffer[offset++] = (state.seqNum >> 8) & 0xFF;
+	buffer[offset++] = state.seqNum & 0xFF;
+
+	auto writeFloat = [&](float f) // lambda to write float as 4 bytes
+		{
+			uint8_t* bytes = reinterpret_cast<uint8_t*>(&f);
+			// SFML can send native float directly so we don't need to worry about endianness here
+			for (int i = 0; i < 4; ++i)
+				buffer[offset++] = bytes[i];
+		};
+
+	// Game state floats (4 bytes each)
+	writeFloat(state.p1Y);
+	writeFloat(state.p2Y);
+	writeFloat(state.ballX);
+	writeFloat(state.ballY);
+	writeFloat(state.ballVelX);
+	writeFloat(state.ballVelY);
+
+	// Scores (2 bytes)
+	buffer[offset++] = static_cast<uint8_t>(state.p1Score);
+	buffer[offset++] = static_cast<uint8_t>(state.p2Score);
+
+	auto status = m_socket.send(buffer, offset, m_guestAddress, m_guestPort);
+
+	if (status != Socket::Status::Done)
+	{
+		cout << "HostNetworkController: Failed to send STATE_UPDATE to "
+			<< m_guestAddress.toString() << ":" << m_guestPort << endl;
+		return;
+	}
+}
+

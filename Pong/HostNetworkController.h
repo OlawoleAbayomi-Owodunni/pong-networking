@@ -4,7 +4,7 @@
 using namespace sf;
 
 struct NetLogicStates {
-	UINT8 messageType;
+	uint8_t messageType;
 	int seqNum;
 	float p1Y = 0.f;
 	float p2Y = 0.f;
@@ -14,6 +14,13 @@ struct NetLogicStates {
 	float ballVelY = 0.f;
 	unsigned int p1Score = 0;
 	unsigned int p2Score = 0;
+};
+
+struct Buffer {
+	char data[16];
+	size_t recieved = 0;
+	std::optional<sf::IpAddress> sender;
+	unsigned short senderPort = 0;
 };
 
 enum MessageTypes : uint8_t {

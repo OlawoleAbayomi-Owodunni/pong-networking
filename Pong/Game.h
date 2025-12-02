@@ -135,5 +135,5 @@ protected:
 
 
 	// network related variables
-	
+	bool m_isNetworkedGame{ false };
 };

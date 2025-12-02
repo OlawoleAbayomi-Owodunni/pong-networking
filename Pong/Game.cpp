@@ -190,21 +190,23 @@ void Game::update(double dt)
 
 	{
 	// Player input - left paddle: W/S, right paddle: Up/Down
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
-	{
-		m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-	}
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
-	{
-		m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-	}
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
-	{
-		m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-	}
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
-	{
-		m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+	if (!m_isNetworkedGame) {
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+		{
+			m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+		{
+			m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+		{
+			m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+		{
+			m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+		}
 	}
 
 	// Keep paddles inside the screen
