@@ -11,6 +11,7 @@
 #include <SFML/Network.hpp>
 
 #include "HostNetworkController.h"
+#include "GuestNetworkController.h"
 
 using namespace std;
 using namespace sf;
@@ -69,10 +70,6 @@ public:
 	/// </summary>
 	void run();
 
-	void RecieveTransferPacket();
-
-	void lookingForClient();
-
 protected:
 	/// <summary>
 	/// @brief Once-off game initialisation code
@@ -110,6 +107,10 @@ protected:
 	void multiplayerMode(); // start multiplayer/network mode stub
 	void waitingForClient(); // after Host selected
 	void waitingForHost();   // after Join selected
+	void RecieveTransferPacket();
+
+	void lookingForClient();
+	void lookingForHost();
 
 	// Font used for all text
 	sf::Font m_arialFont{ "ASSETS/FONTS/ariblk.ttf" };
@@ -179,4 +180,5 @@ protected:
 	bool m_isNetworkedGame{ false };
 	bool m_isHost{ false };
 	int m_seq{ 0 };
+	GuestNetworkController m_guestNet;
 };

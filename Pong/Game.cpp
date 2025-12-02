@@ -204,6 +204,12 @@ void Game::run()
 			RecieveTransferPacket();
 		}
 
+		//GUEST LOBBY NEWTORKING COMPONENT
+		if (m_state == GameState::JoiningLobby)
+		{
+			lookingForHost();
+		}
+
 		timeSinceLastUpdate += clock.restart();
 		while (timeSinceLastUpdate > timePerFrame)
 		{
@@ -539,7 +545,29 @@ void Game::waitingForClient()
 
 void Game::waitingForHost()
 {
-	// TODO: implement client waiting logic
+	m_isNetworkedGame = true;
+	m_isHost = false;
+	
+	// Bind guest UDP socket on auto-assigned port
+	if(!m_guestNet.bind(0))
+	{
+		m_modalStatusText.setString("Error: Could not bind to port");
+		auto bounds = m_modalStatusText.getLocalBounds();
+		m_modalStatusText.setOrigin(sf::Vector2f(bounds.position.x + bounds.size.x / 2.f,
+			bounds.position.y + bounds.size.y / 2.f));
+		return;
+	}
+
+	// First broadcast attempt
+	const unsigned short discoveryPort = 54000;
+	m_guestNet.sendFindHost(discoveryPort);
+
+	// Switch to waiting joining lobby
+	m_state = GameState::JoiningLobby;
+	m_modalStatusText.setString("Searching for host on port " + std::to_string(discoveryPort) + "...");
+	auto bounds = m_modalStatusText.getLocalBounds();
+	m_modalStatusText.setOrigin(sf::Vector2f(bounds.position.x + bounds.size.x / 2.f,
+		bounds.position.y + bounds.size.y / 2.f));
 }
 
 void Game::lookingForClient()
@@ -551,6 +579,44 @@ void Game::lookingForClient()
 	if (m_hostNet.pollForHello()) {
 		// a client has connected
 		m_modalStatusText.setString("Client connected!");
+		m_state = GameState::Playing;
+		resetGame();
+
+		m_showMultiplayerModal = false;
+	}
+}
+
+void Game::lookingForHost()
+{
+	const unsigned short discoveryPort = 54000;
+
+	//Listen for host discovery responses
+	m_guestNet.sendFindHost(discoveryPort);
+
+	IpAddress hostAddr{IpAddress::Any};
+	unsigned short hostPort{ 0 };
+
+	//Check for HOST_HERE
+	if(m_guestNet.recieveHostHere(hostAddr, hostPort)) {
+		//Connected to host
+		m_modalStatusText.setString("Host Found! Connecting...");
+		auto sb = m_modalStatusText.getLocalBounds();
+		m_modalStatusText.setOrigin(sf::Vector2f(sb.position.x + sb.size.x / 
+			2.f, sb.position.y + sb.size.y / 2.f));
+
+		//Send HELLO to host
+		m_guestNet.sendHello();
+	}
+
+	//Wait for HELLO_ACK from host
+	if(m_guestNet.recieveHelloAck()) {
+		// Successfully connected to host
+		m_modalStatusText.setString("Connected to host!");
+		auto sb = m_modalStatusText.getLocalBounds();
+		m_modalStatusText.setOrigin(sf::Vector2f(sb.position.x + sb.size.x /
+			2.f, sb.position.y + sb.size.y / 2.f));
+
+		//Connection complete, start game
 		m_state = GameState::Playing;
 		resetGame();
 
