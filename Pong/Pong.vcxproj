@@ -20,11 +20,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Game.cpp" />
+    <ClCompile Include="GuestNetworkController.cpp" />
     <ClCompile Include="HostNetworkController.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Game.h" />
+    <ClInclude Include="GuestNetworkController.h" />
     <ClInclude Include="HostNetworkController.h" />
   </ItemGroup>
   <ItemGroup>
