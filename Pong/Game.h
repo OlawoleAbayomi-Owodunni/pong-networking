@@ -37,6 +37,12 @@ public:
 	static const int s_height{ 900 };
 };
 
+enum class GameState
+{
+	MainMenu,
+	Playing
+};
+
 class Game
 {
 public:
@@ -93,6 +99,7 @@ protected:
 	/// @brief Resets game state to start a new match.
 	/// </summary>
 	void resetGame();
+	void multiplayerMode(); // start multiplayer/network mode stub
 
 	// Font used for all text
 	sf::Font m_arialFont{ "ASSETS/FONTS/ariblk.ttf" };
@@ -109,6 +116,17 @@ protected:
 	// overlay for end game (dimming + text)
 	sf::RectangleShape m_overlayRect;
 	sf::Text m_overlayText{ m_arialFont };
+
+	// Main menu rectangles
+	sf::RectangleShape m_menuOption1; // Play
+	sf::RectangleShape m_menuOption2; // Online Mode
+	sf::RectangleShape m_menuOption3; // Exit
+	// Menu texts
+	sf::Text m_menuText1{ m_arialFont };
+	sf::Text m_menuText2{ m_arialFont };
+	sf::Text m_menuText3{ m_arialFont };
+
+	GameState m_state{ GameState::MainMenu };
 
 	// velocities
 	sf::Vector2f m_ballVelocity{ -400.f, -250.f };
