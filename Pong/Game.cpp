@@ -191,6 +191,53 @@ void Game::run()
 	while (m_window.isOpen())
 	{
 		processEvents();
+
+		//HOSTING THE LOBBY NETWORKING COMPONENT
+		if(m_state == GameState::HostingLobby)
+		{
+			lookingForClient();
+		}
+
+		//HOST GAMEPLAY NETWORKING
+		if (m_state == GameState::Playing && m_isNetworkedGame && m_isHost) 
+		{
+			//---- Get guest input ----
+			int8_t guestInput = m_hostNet.recieveGuestInput();
+
+			//apply guest input to right paddle
+				//[guest input = -1 -> up , 1 -> down , 0 -> no input]
+			if (guestInput == 0) {
+				m_isNetP2Up = false;
+				m_isNetP2Down = false;
+			}
+			else if (guestInput == -1)
+			{
+				m_isNetP2Up = true;
+				m_isNetP2Down = false;
+			}
+			else if(guestInput == 1)
+			{
+				m_isNetP2Down = true;
+				m_isNetP2Up = false;
+			}
+
+			//---- Build authoritative state packet ----
+			NetLogicStates state;
+			state.messageType = MessageTypes::STATE_UPDATE;
+			state.seqNum = m_seq++;
+			state.p1Y = m_leftPaddle.getPosition().y;
+			state.p2Y = m_rightPaddle.getPosition().y;
+			state.ballX = m_ball.getPosition().x;
+			state.ballY = m_ball.getPosition().y;
+			state.ballVelX = m_ballVelocity.x;
+			state.ballVelY = m_ballVelocity.y;
+			state.p1Score = m_leftScore;
+			state.p2Score = m_rightScore;
+
+			//---- Send authoritative state to guest ----
+			m_hostNet.sendStateUpdate(state);
+		}
+
 		timeSinceLastUpdate += clock.restart();
 		while (timeSinceLastUpdate > timePerFrame)
 		{
@@ -218,6 +265,7 @@ void Game::run()
 #endif
 	}
 }
+
 
 void Game::processEvents()
 {
@@ -254,7 +302,7 @@ void Game::processGameEvents(const sf::Event& event)
 		case sf::Keyboard::Scancode::Enter:
 			if (m_state == GameState::MainMenu)
 			{
-				m_state = GameState::Playing;
+				//m_state = GameState::Playing;
 				resetGame();
 			}
 			break;
@@ -309,6 +357,152 @@ void Game::processGameEvents(const sf::Event& event)
 	}
 }
 
+void Game::update(double dt)
+{
+	// dt arrives in milliseconds; convert to seconds
+	float floatSeconds = static_cast<float>(dt) / 1000.f;
+
+	// Do not update gameplay while in main menu
+	if (m_state != GameState::Playing)
+	{
+		return;
+	}
+
+	// If game over listen for space to restart
+	if (m_gameOver)
+	{
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space))
+		{
+			resetGame();
+		}
+		return;
+	}
+
+	// Player input - left paddle: W/S, right paddle: Up/Down
+	if (!m_isNetworkedGame)
+	{
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+		{
+			m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+		{
+			m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+		}
+	}
+	else {
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
+			sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+		{
+			m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S) ||
+			sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+		{
+			m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+		}
+
+		//Moving networked player 2
+		if(m_isNetP2Up) {
+			m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+		}
+		if(m_isNetP2Down) {
+			m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+		}
+	}
+
+
+	// Keep paddles inside the screen
+	auto clampPaddle = [&](sf::RectangleShape& paddle)
+		{
+			if (paddle.getPosition().y < 0.f)
+				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
+			if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
+				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
+		};
+	clampPaddle(m_leftPaddle);
+	clampPaddle(m_rightPaddle);
+
+	// Move ball
+	m_ball.move(m_ballVelocity * floatSeconds);
+
+	// Ball collision with top/bottom
+	if (m_ball.getPosition().y <= 0.f)
+	{
+		m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, 0.f));
+		m_ballVelocity.y = -m_ballVelocity.y;
+	}
+	if (m_ball.getPosition().y + m_ball.getRadius() * 2.f >= (float)ScreenSize::s_height)
+	{
+		m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, (float)ScreenSize::s_height - m_ball.getRadius() * 2.f));
+		m_ballVelocity.y = -m_ballVelocity.y;
+	}
+
+	// Ball collision with paddles (AABB using positions and sizes)
+	{
+		auto ballPos = m_ball.getPosition();
+		auto ballSize = sf::Vector2f(m_ball.getRadius() * 2.f, m_ball.getRadius() * 2.f);
+
+		auto lp = m_leftPaddle.getPosition();
+		auto lsize = m_leftPaddle.getSize();
+		bool intersectsLeft = !(ballPos.x + ballSize.x < lp.x || ballPos.x > lp.x + lsize.x ||
+			ballPos.y + ballSize.y < lp.y || ballPos.y > lp.y + lsize.y);
+		if (intersectsLeft)
+		{
+			m_ball.setPosition(sf::Vector2f(lp.x + lsize.x + 0.1f, ballPos.y));
+			m_ballVelocity.x = std::abs(m_ballVelocity.x);
+		}
+
+		auto rp = m_rightPaddle.getPosition();
+		auto rsize = m_rightPaddle.getSize();
+		bool intersectsRight = !(ballPos.x + ballSize.x < rp.x || ballPos.x > rp.x + rsize.x ||
+			ballPos.y + ballSize.y < rp.y || ballPos.y > rp.y + rsize.y);
+		if (intersectsRight)
+		{
+			m_ball.setPosition(sf::Vector2f(rp.x - ballSize.x - 0.1f, ballPos.y));
+			m_ballVelocity.x = -std::abs(m_ballVelocity.x);
+		}
+	}
+
+	// Ball out of bounds - simple reset and score
+	if (m_ball.getPosition().x < -50.f)
+	{
+		// right player scores
+		m_rightScore++;
+		m_rightScoreText.setString(std::to_string(m_rightScore));
+		m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
+		m_ballVelocity = sf::Vector2f(-400.f, -250.f);
+	}
+	else if (m_ball.getPosition().x > (float)ScreenSize::s_width + 50.f)
+	{
+		// left player scores
+		m_leftScore++;
+		m_leftScoreText.setString(std::to_string(m_leftScore));
+		m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
+		m_ballVelocity = sf::Vector2f(400.f, 250.f);
+	}
+
+	// Check win conditions
+	if (m_leftScore >= m_winScore)
+	{
+		m_gameOver = true;
+		m_overlayText.setString("Player 1\nWins!\nPress Space to\nRestart");
+		auto bounds = m_overlayText.getLocalBounds();
+		sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+		m_overlayText.setOrigin(origin);
+		m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+	}
+	else if (m_rightScore >= m_winScore)
+	{
+		m_gameOver = true;
+		m_overlayText.setString("Player 2\nWins!\nPress Space to\nRestart");
+		auto bounds = m_overlayText.getLocalBounds();
+		sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+		m_overlayText.setOrigin(origin);
+		m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+	}
+}
+
 void Game::render()
 {
 	m_window.clear(sf::Color(0, 0, 0, 0));
@@ -316,7 +510,7 @@ void Game::render()
 	m_window.draw(x_updateFPS);
 	m_window.draw(x_drawFPS);
 #endif
-	if (m_state == GameState::MainMenu)
+	if (m_state != GameState::Playing)
 	{
 		m_window.draw(m_menuOption1);
 		m_window.draw(m_menuOption2);
@@ -359,7 +553,21 @@ void Game::multiplayerMode()
 
 void Game::waitingForClient()
 {
-	// TODO: implement host waiting logic
+	m_isNetworkedGame = true;
+	m_isHost = true;
+
+	const unsigned short hostPort = 54000;
+	if (!m_hostNet.bind(hostPort))
+	{
+		m_modalStatusText.setString("Error: Could not bind to port");
+		auto sb = m_modalStatusText.getLocalBounds();
+		m_modalStatusText.setOrigin(sf::Vector2f(sb.position.x + sb.size.x / 2.f, sb.position.y + sb.size.y / 2.f));
+		return;
+	}
+
+	//switch to hosting lobby mode
+	m_state = GameState::HostingLobby;
+	m_modalStatusText.setString("Hosting on port " + std::to_string(hostPort) + "\nWaiting for client...");
 }
 
 void Game::waitingForHost()
@@ -367,135 +575,18 @@ void Game::waitingForHost()
 	// TODO: implement client waiting logic
 }
 
-void Game::update(double dt)
+void Game::lookingForClient()
 {
-    // dt arrives in milliseconds; convert to seconds
-    float floatSeconds = static_cast<float>(dt) / 1000.f;
+	//Listen for discovery broadcasts
+	m_hostNet.pollForDiscoveryRequests();
 
-    // Do not update gameplay while in main menu
-    if (m_state == GameState::MainMenu)
-    {
-        return;
-    }
+	//Listen for HELLO handshakes from clients
+	if (m_hostNet.pollForHello()) {
+		// a client has connected
+		m_modalStatusText.setString("Client connected!");
+		m_state = GameState::Playing;
+		resetGame();
 
-    // If game over listen for space to restart
-    if (m_gameOver)
-    {
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space))
-        {
-            resetGame();
-        }
-        return;
-    }
-
-    // Player input - left paddle: W/S, right paddle: Up/Down
-    if (!m_isNetworkedGame)
-    {
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
-        {
-            m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
-        {
-            m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
-        {
-            m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
-        {
-            m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-        }
-    }
-
-    // Keep paddles inside the screen
-    auto clampPaddle = [&](sf::RectangleShape& paddle)
-    {
-        if (paddle.getPosition().y < 0.f)
-            paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
-        if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
-            paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
-    };
-    clampPaddle(m_leftPaddle);
-    clampPaddle(m_rightPaddle);
-
-    // Move ball
-    m_ball.move(m_ballVelocity * floatSeconds);
-
-    // Ball collision with top/bottom
-    if (m_ball.getPosition().y <= 0.f)
-    {
-        m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, 0.f));
-        m_ballVelocity.y = -m_ballVelocity.y;
-    }
-    if (m_ball.getPosition().y + m_ball.getRadius() * 2.f >= (float)ScreenSize::s_height)
-    {
-        m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, (float)ScreenSize::s_height - m_ball.getRadius() * 2.f));
-        m_ballVelocity.y = -m_ballVelocity.y;
-    }
-
-    // Ball collision with paddles (AABB using positions and sizes)
-    {
-        auto ballPos = m_ball.getPosition();
-        auto ballSize = sf::Vector2f(m_ball.getRadius() * 2.f, m_ball.getRadius() * 2.f);
-
-        auto lp = m_leftPaddle.getPosition();
-        auto lsize = m_leftPaddle.getSize();
-        bool intersectsLeft = !(ballPos.x + ballSize.x < lp.x || ballPos.x > lp.x + lsize.x ||
-                                ballPos.y + ballSize.y < lp.y || ballPos.y > lp.y + lsize.y);
-        if (intersectsLeft)
-        {
-            m_ball.setPosition(sf::Vector2f(lp.x + lsize.x + 0.1f, ballPos.y));
-            m_ballVelocity.x = std::abs(m_ballVelocity.x);
-        }
-
-        auto rp = m_rightPaddle.getPosition();
-        auto rsize = m_rightPaddle.getSize();
-        bool intersectsRight = !(ballPos.x + ballSize.x < rp.x || ballPos.x > rp.x + rsize.x ||
-                                 ballPos.y + ballSize.y < rp.y || ballPos.y > rp.y + rsize.y);
-        if (intersectsRight)
-        {
-            m_ball.setPosition(sf::Vector2f(rp.x - ballSize.x - 0.1f, ballPos.y));
-            m_ballVelocity.x = -std::abs(m_ballVelocity.x);
-        }
-    }
-
-    // Ball out of bounds - simple reset and score
-    if (m_ball.getPosition().x < -50.f)
-    {
-        // right player scores
-        m_rightScore++;
-        m_rightScoreText.setString(std::to_string(m_rightScore));
-        m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
-        m_ballVelocity = sf::Vector2f(-400.f, -250.f);
-    }
-    else if (m_ball.getPosition().x > (float)ScreenSize::s_width + 50.f)
-    {
-        // left player scores
-        m_leftScore++;
-        m_leftScoreText.setString(std::to_string(m_leftScore));
-        m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
-        m_ballVelocity = sf::Vector2f(400.f, 250.f);
-    }
-
-    // Check win conditions
-    if (m_leftScore >= m_winScore)
-    {
-        m_gameOver = true;
-        m_overlayText.setString("Player 1\nWins!\nPress Space to\nRestart");
-        auto bounds = m_overlayText.getLocalBounds();
-        sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
-        m_overlayText.setOrigin(origin);
-        m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
-    }
-    else if (m_rightScore >= m_winScore)
-    {
-        m_gameOver = true;
-        m_overlayText.setString("Player 2\nWins!\nPress Space to\nRestart");
-        auto bounds = m_overlayText.getLocalBounds();
-        sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
-        m_overlayText.setOrigin(origin);
-        m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
-    }
+		m_showMultiplayerModal = false;
+	}
 }

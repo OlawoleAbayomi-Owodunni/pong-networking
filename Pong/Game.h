@@ -10,6 +10,8 @@
 #include <string>
 #include <SFML/Network.hpp>
 
+#include "HostNetworkController.h"
+
 using namespace std;
 using namespace sf;
 
@@ -40,7 +42,9 @@ public:
 enum class GameState
 {
 	MainMenu,
-	Playing
+	Playing,
+	HostingLobby,
+	JoiningLobby
 };
 
 class Game
@@ -64,6 +68,8 @@ public:
 	///  complete in less than the target time.
 	/// </summary>
 	void run();
+
+	void lookingForClient();
 
 protected:
 	/// <summary>
@@ -163,7 +169,12 @@ protected:
 	int x_drawFrameCount{ 0 };							// draws per second counter.
 #endif // TEST_FPS
 
+	bool m_isNetP2Up{ false }; // is networked player 2 moving up
+	bool m_isNetP2Down{ false }; // is networked player 2 moving down
 
 	// network related variables
+	HostNetworkController m_hostNet;
 	bool m_isNetworkedGame{ false };
+	bool m_isHost{ false };
+	int m_seq{ 0 };
 };
