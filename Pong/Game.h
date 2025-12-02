@@ -112,6 +112,8 @@ protected:
 	void lookingForClient();
 	void lookingForHost();
 
+	void recieveNetworkState();
+
 	// Font used for all text
 	sf::Font m_arialFont{ "ASSETS/FONTS/ariblk.ttf" };
 	// main window

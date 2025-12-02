@@ -210,6 +210,12 @@ void Game::run()
 			lookingForHost();
 		}
 
+		//GUEST GAMEPLAY NETWORKING
+		if (m_state == GameState::Playing && m_isNetworkedGame && !m_isHost) 
+		{
+			recieveNetworkState();
+		}
+
 		timeSinceLastUpdate += clock.restart();
 		while (timeSinceLastUpdate > timePerFrame)
 		{
@@ -621,6 +627,25 @@ void Game::lookingForHost()
 		resetGame();
 
 		m_showMultiplayerModal = false;
+	}
+}
+
+void Game::recieveNetworkState()
+{
+	NetLogicStates incoming;
+	if(!m_guestNet.recieveStateUpdate(incoming)) {
+		//No state received
+		return;
+	}
+
+	if (!m_hasCurr || incoming.seqNum > m_currState.seqNum) { //only accept newer states
+		m_prevState = m_currState;
+		m_currState = incoming;
+
+		m_hasPrev = m_hasCurr;
+		m_hasCurr = true;
+
+		m_interpAlpha = 0.f; //reset interpolation alpha
 	}
 }
 
