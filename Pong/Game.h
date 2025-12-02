@@ -70,6 +70,8 @@ public:
 	/// </summary>
 	void run();
 
+	void guestPaddleController();
+
 protected:
 	/// <summary>
 	/// @brief Once-off game initialisation code

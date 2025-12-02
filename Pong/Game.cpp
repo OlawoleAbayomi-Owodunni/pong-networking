@@ -213,7 +213,9 @@ void Game::run()
 		//GUEST GAMEPLAY NETWORKING
 		if (m_state == GameState::Playing && m_isNetworkedGame && !m_isHost) 
 		{
-			recieveNetworkState();
+			guestPaddleController();	// sending paddle position to host
+
+			recieveNetworkState();		// receiving game state from host
 		}
 
 		timeSinceLastUpdate += clock.restart();
@@ -333,6 +335,16 @@ void Game::update(double dt)
 	// dt arrives in milliseconds; convert to seconds
 	float floatSeconds = static_cast<float>(dt) / 1000.f;
 
+	if (m_state == GameState::Playing && m_isNetworkedGame && !m_isHost) { // ensures guest doesn't run gameplay update logic
+		if (m_hasPrev && m_hasCurr) {
+			float interpSpeed = 60.0f; //60hz host
+
+			m_interpAlpha += interpSpeed * floatSeconds;
+			if (m_interpAlpha > 1.0f) m_interpAlpha = 1.0f;
+		}
+		return;
+	}
+
 	// Do not update gameplay while in main menu
 	if (m_state != GameState::Playing)
 	{
@@ -389,7 +401,6 @@ void Game::update(double dt)
 			m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
 		}
 	}
-
 
 	// Keep paddles inside the screen
 	auto clampPaddle = [&](sf::RectangleShape& paddle)
@@ -510,6 +521,29 @@ void Game::render()
 		m_window.display();
 		return;
 	}
+	
+	// If guest in networked game, interpolate between previous and current state
+	if(m_state == GameState::Playing && m_isNetworkedGame && !m_isHost) {
+		if (m_hasPrev && m_hasCurr) {
+			auto lerp = [](float a, float b, float alpha) {
+				return a + (b - a) * alpha;
+				};
+
+			float p1Y = lerp(m_prevState.p1Y, m_currState.p1Y, m_interpAlpha);
+			float p2Y = lerp(m_prevState.p2Y, m_currState.p2Y, m_interpAlpha);
+			float ballX = lerp(m_prevState.ballX, m_currState.ballX, m_interpAlpha);
+			float ballY = lerp(m_prevState.ballY, m_currState.ballY, m_interpAlpha);
+
+			m_leftPaddle.setPosition(sf::Vector2f(m_leftPaddle.getPosition().x, p1Y));
+			m_rightPaddle.setPosition(sf::Vector2f(m_rightPaddle.getPosition().x, p2Y));
+			m_ball.setPosition(sf::Vector2f(ballX, ballY));
+
+			m_leftScore = m_currState.p1Score;
+			m_rightScore = m_currState.p2Score;
+			m_leftScoreText.setString(std::to_string(m_leftScore));
+			m_rightScoreText.setString(std::to_string(m_rightScore));
+		}
+	}
 	m_window.draw(m_centerLine);
 	m_window.draw(m_leftPaddle);
 	m_window.draw(m_rightPaddle);
@@ -624,6 +658,8 @@ void Game::lookingForHost()
 
 		//Connection complete, start game
 		m_state = GameState::Playing;
+		m_hasPrev = false;
+		m_hasCurr = false;
 		resetGame();
 
 		m_showMultiplayerModal = false;
@@ -687,3 +723,22 @@ void Game::RecieveTransferPacket()
 	//---- Send authoritative state to guest ----
 	m_hostNet.sendStateUpdate(state);
 }
+
+void Game::guestPaddleController()
+{
+	int8_t inputY = 0;
+
+	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up) ||
+		sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+	{
+		inputY = -1;
+	}
+	else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down) ||
+		sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+	{
+		inputY = 1;
+	}
+
+	m_guestNet.sendInput(inputY);
+}
+
