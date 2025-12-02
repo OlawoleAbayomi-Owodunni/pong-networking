@@ -71,11 +71,58 @@ bool GuestNetworkController::recieveHostHere(sf::IpAddress& outAddress, unsigned
 
 void GuestNetworkController::sendHello()
 {
+	if (m_hostAddress == IpAddress::Any || m_hostPort == 0) {
+		cout << "GuestNetworkController: Cannot send HELLO - host address/port not set" << endl;
+		return;
+	}
+
+	// Build HELLO packet (message type 3)
+	uint8_t buffer[3];
+	buffer[0] = MessageTypes::HELLO;
+
+	// Include our gameplay recieve port (bytes 1 and 2, big-endian)
+	unsigned short guestPort = m_socket.getLocalPort();
+	buffer[1] = (guestPort >> 8) & 0xFF;
+	buffer[2] = guestPort & 0xFF;
+
+	auto status = m_socket.send(buffer, sizeof(buffer), m_hostAddress, m_hostPort);
+	if(status != Socket::Status::Done)
+	{
+		cout << "GuestNetworkController: Failed to send HELLO to "
+			<< m_hostAddress.toString() << ":" << m_hostPort << endl;
+		return;
+	}
+	else
+	{
+		cout << "GuestNetworkController: Sent HELLO to "
+			<< m_hostAddress.toString() << ":" << m_hostPort << endl;
+	}
 }
 
 bool GuestNetworkController::recieveHelloAck()
 {
-	return false;
+	Buffer buffer;
+	Socket::Status status = m_socket.receive(buffer.data, sizeof(buffer.data), buffer.recieved, buffer.sender, buffer.senderPort);
+
+	// ---- ERROR CHECKS ----
+	if (status != Socket::Status::Done)
+		return false;
+	if (!buffer.sender.has_value() || buffer.recieved < 1)
+		return false;
+
+	uint8_t msgType = buffer.data[0];
+	if (msgType != MessageTypes::HELLO_ACK)
+	{
+		cout << "GuestNetworkController: Expected HELLO_ACK but recieved different message type" << endl;
+		return false;
+	}
+
+	// Handshake complete
+	m_isConnected = true;
+	cout << "GuestNetworkController: Recieved HELLO_ACK from host "
+		<< m_hostAddress.toString() << ":" << m_hostPort
+		<< " -> connected!" << endl;
+	return true;
 }
 
 void GuestNetworkController::sendInput(int8_t inputY)
