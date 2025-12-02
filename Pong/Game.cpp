@@ -201,41 +201,7 @@ void Game::run()
 		//HOST GAMEPLAY NETWORKING
 		if (m_state == GameState::Playing && m_isNetworkedGame && m_isHost) 
 		{
-			//---- Get guest input ----
-			int8_t guestInput = m_hostNet.recieveGuestInput();
-
-			//apply guest input to right paddle
-				//[guest input = -1 -> up , 1 -> down , 0 -> no input]
-			if (guestInput == 0) {
-				m_isNetP2Up = false;
-				m_isNetP2Down = false;
-			}
-			else if (guestInput == -1)
-			{
-				m_isNetP2Up = true;
-				m_isNetP2Down = false;
-			}
-			else if(guestInput == 1)
-			{
-				m_isNetP2Down = true;
-				m_isNetP2Up = false;
-			}
-
-			//---- Build authoritative state packet ----
-			NetLogicStates state;
-			state.messageType = MessageTypes::STATE_UPDATE;
-			state.seqNum = m_seq++;
-			state.p1Y = m_leftPaddle.getPosition().y;
-			state.p2Y = m_rightPaddle.getPosition().y;
-			state.ballX = m_ball.getPosition().x;
-			state.ballY = m_ball.getPosition().y;
-			state.ballVelX = m_ballVelocity.x;
-			state.ballVelY = m_ballVelocity.y;
-			state.p1Score = m_leftScore;
-			state.p2Score = m_rightScore;
-
-			//---- Send authoritative state to guest ----
-			m_hostNet.sendStateUpdate(state);
+			RecieveTransferPacket();
 		}
 
 		timeSinceLastUpdate += clock.restart();
@@ -296,13 +262,6 @@ void Game::processGameEvents(const sf::Event& event)
 				m_state = GameState::MainMenu;
 				m_showMultiplayerModal = false;
 				m_modalStatusText.setString("");
-				resetGame();
-			}
-			break;
-		case sf::Keyboard::Scancode::Enter:
-			if (m_state == GameState::MainMenu)
-			{
-				//m_state = GameState::Playing;
 				resetGame();
 			}
 			break;
@@ -589,4 +548,43 @@ void Game::lookingForClient()
 
 		m_showMultiplayerModal = false;
 	}
+}
+
+void Game::RecieveTransferPacket()
+{
+	//---- Get guest input ----
+	int8_t guestInput = m_hostNet.recieveGuestInput();
+
+	//apply guest input to right paddle
+	//[guest input = -1 -> up , 1 -> down , 0 -> no input]
+	if (guestInput == 0) {
+		m_isNetP2Up = false;
+		m_isNetP2Down = false;
+	}
+	else if (guestInput == -1)
+	{
+		m_isNetP2Up = true;
+		m_isNetP2Down = false;
+	}
+	else if (guestInput == 1)
+	{
+		m_isNetP2Down = true;
+		m_isNetP2Up = false;
+	}
+
+	//---- Build authoritative state packet ----
+	NetLogicStates state;
+	state.messageType = MessageTypes::STATE_UPDATE;
+	state.seqNum = m_seq++;
+	state.p1Y = m_leftPaddle.getPosition().y;
+	state.p2Y = m_rightPaddle.getPosition().y;
+	state.ballX = m_ball.getPosition().x;
+	state.ballY = m_ball.getPosition().y;
+	state.ballVelX = m_ballVelocity.x;
+	state.ballVelY = m_ballVelocity.y;
+	state.p1Score = m_leftScore;
+	state.p2Score = m_rightScore;
+
+	//---- Send authoritative state to guest ----
+	m_hostNet.sendStateUpdate(state);
 }

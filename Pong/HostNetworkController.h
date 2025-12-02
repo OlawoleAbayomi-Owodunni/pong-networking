@@ -47,7 +47,7 @@ public:
 	void sendStateUpdate(const NetLogicStates& state);
 
 	//check if guest is still connected
-//	bool isGuestConnected() const { return m_hasGuest; }
+	bool isGuestConnected() const { return m_hasGuest; }
 
 private:
 	UdpSocket m_socket;

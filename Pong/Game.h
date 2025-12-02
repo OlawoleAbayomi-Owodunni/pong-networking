@@ -69,6 +69,8 @@ public:
 	/// </summary>
 	void run();
 
+	void RecieveTransferPacket();
+
 	void lookingForClient();
 
 protected:
