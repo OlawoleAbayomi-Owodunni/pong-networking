@@ -8,6 +8,7 @@
 
 #include <SFML/Graphics.hpp>
 #include <string>
+#include <SFML/Network.hpp>
 
 using namespace std;
 using namespace sf;
@@ -132,4 +133,7 @@ protected:
 	int x_drawFrameCount{ 0 };							// draws per second counter.
 #endif // TEST_FPS
 
+
+	// network related variables
+	
 };

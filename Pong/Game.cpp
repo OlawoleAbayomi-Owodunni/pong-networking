@@ -188,6 +188,7 @@ void Game::update(double dt)
 		return;
 	}
 
+	{
 	// Player input - left paddle: W/S, right paddle: Up/Down
 	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
 	{
@@ -209,15 +210,16 @@ void Game::update(double dt)
 	// Keep paddles inside the screen
 
 	auto clampPaddle = [&](sf::RectangleShape& paddle)
-	{
-		if (paddle.getPosition().y < 0.f)
-			paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
-		if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
-			paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
-	};
+		{
+			if (paddle.getPosition().y < 0.f)
+				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
+			if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
+				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
+		};
 
 	clampPaddle(m_leftPaddle);
 	clampPaddle(m_rightPaddle);
+	}
 
 	// Move ball
 	m_ball.move(m_ballVelocity * floatSeconds);
@@ -328,100 +330,3 @@ void Game::render()
 
 	m_window.display();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
