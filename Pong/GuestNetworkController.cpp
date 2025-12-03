@@ -16,7 +16,7 @@ bool GuestNetworkController::bind(unsigned short port)
 		cout << "GuestNetworkController: Failed to bind on port " << port << endl;
 		return false;
 	}
-	cout << "GuestNetworkController: Bound on port " << port << endl;
+	cout << "GuestNetworkController: Bound on port " << m_socket.getLocalPort() << endl;
 	return true;
 }
 
@@ -41,15 +41,26 @@ bool GuestNetworkController::recieveHostHere(sf::IpAddress& outAddress, unsigned
 	Socket::Status status = m_socket.receive(buffer.data, sizeof(buffer.data), buffer.recieved, buffer.sender, buffer.senderPort);
 
 	// ---- ERROR CHECKS ----
-	if (status != Socket::Status::Done)
+	if (status != Socket::Status::Done) {
 		return false;
+	}
 
-	if (!buffer.sender.has_value() || buffer.recieved < 3)
+	// Ignore packets that are too small to contain a type, or missing sender
+	if (!buffer.sender.has_value() || buffer.recieved < 1) {
 		return false;
+	}
 
 	uint8_t msgType = buffer.data[0];
-	if (msgType != MessageTypes::HOST_HERE)
+	// Only handle HOST_HERE here; ignore other messages
+	if (msgType != MessageTypes::HOST_HERE) {
 		return false;
+	}
+
+	// For HOST_HERE we require at least 3 bytes
+	if (buffer.recieved < 3) {
+		cout << "GuestNetworkController: Invalid HOST_HERE packet recieved" << endl;
+		return false;
+	}
 
 	// ---- Extract host port (from bytes 1 and 2, big-endian) ----
 	uint8_t hi = static_cast<uint8_t>(buffer.data[1]);
@@ -108,7 +119,10 @@ bool GuestNetworkController::recieveHelloAck()
 	if (status != Socket::Status::Done)
 		return false;
 	if (!buffer.sender.has_value() || buffer.recieved < 1)
+	{
+		cout << "GuestNetworkController: Invalid HELLO_ACK packet recieved" << endl;
 		return false;
+	}
 
 	uint8_t msgType = buffer.data[0];
 	if (msgType != MessageTypes::HELLO_ACK)
@@ -164,14 +178,24 @@ bool GuestNetworkController::recieveStateUpdate(NetLogicStates& state)
 
 	// ---- ERROR CHECKS ----
 	if (status != Socket::Status::Done)
+	{
+		cout << "GuestNetworkController: No STATE_UPDATE recieved (status "
+			<< static_cast<int>(status) << ")" << endl;
 		return false;
+	}
 
 	if (!sender.has_value() || recieved < 31) // 1 + 4 + 24 + 2 = 31 bytes minimum
+	{
+		cout << "GuestNetworkController: Invalid STATE_UPDATE packet recieved" << endl;
 		return false;
+	}
 
 	uint8_t msgType = buffer[0];
 	if (msgType != MessageTypes::STATE_UPDATE)
+	{
+		cout << "GuestNetworkController: Expected STATE_UPDATE but recieved different message type" << endl;
 		return false;
+	}
 
 	// ---- Extract state ----
 	size_t offset = 1;
@@ -182,8 +206,9 @@ bool GuestNetworkController::recieveStateUpdate(NetLogicStates& state)
 	seq |= (static_cast<uint8_t>(buffer[offset + 1]) << 16);
 	seq |= (static_cast<uint8_t>(buffer[offset + 2]) << 8);
 	seq |= static_cast<uint8_t>(buffer[offset + 3]);
+	offset += 4; // Advance past the 4-byte seqNum
 
-	auto readFloat = [&](float f) { // lambda to read float from 4 bytes
+	auto readFloat = [&](float& f) { // lambda to read float from 4 bytes
 		memcpy(&f, buffer + offset, sizeof(float));
 		offset += sizeof(float);
 		};
@@ -200,9 +225,21 @@ bool GuestNetworkController::recieveStateUpdate(NetLogicStates& state)
 	readFloat(state.ballVelX);
 	readFloat(state.ballVelY);
 
-	// Scores (2 bytes, big-endian)
+	// Scores (2 bytes)
 	state.p1Score = static_cast<uint8_t>(buffer[offset++]);
 	state.p2Score = static_cast<uint8_t>(buffer[offset++]);
 
 	return true;
+}
+
+void GuestNetworkController::reset()
+{
+	// Unbind and reset socket
+	m_socket.unbind();
+	m_socket.setBlocking(false);
+
+	// Reset host connection info
+	m_hostAddress = sf::IpAddress::Any;
+	m_hostPort = 0;
+	m_isConnected = false;
 }

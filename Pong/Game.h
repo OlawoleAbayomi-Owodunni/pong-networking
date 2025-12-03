@@ -194,4 +194,13 @@ protected:
 	bool m_hasCurr = false;
 
 	float m_interpAlpha = 0.0f; // 0 -> using prev state , 1 -> using curr state
+
+	sf::Clock m_discoveryClock;
+	sf::Time  m_lastDiscovery{ sf::Time::Zero };
+
+	// discovery throttle
+	sf::Clock m_joiningLobbyClock;
+	sf::Time  m_lastJoinAttempt{ sf::Time::Zero };
+
+	bool m_sentHello{ false }; // set after we send HELLO, so we keep polling for HELLO_ACK
 };

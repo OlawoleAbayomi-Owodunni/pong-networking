@@ -232,7 +232,7 @@ void Game::run()
 				std::string updatesPS = "UPS " + std::to_string(x_updateFrameCount - 1);
 				x_updateFPS.setString(updatesPS);
 				std::string drawsPS = "DPS " + std::to_string(x_drawFrameCount);
-				x_drawFPS.setString(drawsPS);
+			 x_drawFPS.setString(drawnPS);
 				x_updateFrameCount = 0;
 				x_drawFrameCount = 0;
 				x_secondTime = sf::Time::Zero;
@@ -261,73 +261,93 @@ void Game::processEvents()
 
 void Game::processGameEvents(const sf::Event& event)
 {
-	if (const auto* keyPressed = event.getIf<sf::Event::KeyPressed>())
-	{
-		switch (keyPressed->scancode)
-		{
-		case sf::Keyboard::Scancode::Escape:
-			// If in game, return to main menu instead of closing.
-			if (m_state == GameState::MainMenu)
-			{
-				m_window.close();
-			}
-			else
-			{
-				m_state = GameState::MainMenu;
-				m_showMultiplayerModal = false;
-				m_modalStatusText.setString("");
-				resetGame();
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	if (m_state == GameState::MainMenu)
-	{
-		if (const auto* mousePressed = event.getIf<sf::Event::MouseButtonPressed>())
-		{
-			if (static_cast<int>(mousePressed->button) == 0)
-			{
-				sf::Vector2f mousePos(static_cast<float>(mousePressed->position.x), static_cast<float>(mousePressed->position.y));
-				auto inRect = [&](const sf::RectangleShape& r){ return r.getGlobalBounds().contains(mousePos); };
-				if (m_showMultiplayerModal)
-				{
-					if (inRect(m_modalHostBtn))
-					{
-						waitingForClient();
-						m_modalStatusText.setString("waiting for client");
-						auto sb2 = m_modalStatusText.getLocalBounds();
-						m_modalStatusText.setOrigin(sf::Vector2f(sb2.position.x + sb2.size.x / 2.f, sb2.position.y + sb2.size.y / 2.f));
-					}
-					else if (inRect(m_modalJoinBtn))
-					{
-						waitingForHost();
-						m_modalStatusText.setString("waiting for host");
-						auto sb3 = m_modalStatusText.getLocalBounds();
-						m_modalStatusText.setOrigin(sf::Vector2f(sb3.position.x + sb3.size.x / 2.f, sb3.position.y + sb3.size.y / 2.f));
-					}
-				}
-				else
-				{
-					if (inRect(m_menuOption1))
-					{
-						m_state = GameState::Playing;
-						resetGame();
-					}
-					else if (inRect(m_menuOption2))
-					{
-						multiplayerMode();
-						m_showMultiplayerModal = true;
-					}
-					else if (inRect(m_menuOption3))
-					{
-						m_window.close();
-					}
-				}
-			}
-		}
-	}
+    if (const auto* keyPressed = event.getIf<sf::Event::KeyPressed>())
+    {
+        switch (keyPressed->scancode)
+        {
+        case sf::Keyboard::Scancode::Escape:
+            // Escape behavior: if in main menu and modal/network active, reset controllers; otherwise return to main menu.
+            if (m_state == GameState::MainMenu)
+            {
+                // If user is in multiplayer modal (hosting/joining), ensure network reset before exit
+                if (m_showMultiplayerModal || m_isNetworkedGame)
+                {
+                    m_hostNet.reset();
+                    m_guestNet.reset();
+                    m_isNetworkedGame = false;
+                    m_isHost = false;
+                    m_showMultiplayerModal = false;
+                    m_modalStatusText.setString("");
+                }
+                m_window.close();
+            }
+            else
+            {
+                // Return to main menu from other states, also reset any networking
+                m_hostNet.reset();
+                m_guestNet.reset();
+                m_isNetworkedGame = false;
+                m_isHost = false;
+                m_state = GameState::MainMenu;
+                m_showMultiplayerModal = false;
+                m_modalStatusText.setString("");
+                resetGame();
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    if (m_state == GameState::MainMenu)
+    {
+        if (const auto* mousePressed = event.getIf<sf::Event::MouseButtonPressed>())
+        {
+            if (static_cast<int>(mousePressed->button) == 0)
+            {
+                sf::Vector2f mousePos(static_cast<float>(mousePressed->position.x), static_cast<float>(mousePressed->position.y));
+                auto inRect = [&](const sf::RectangleShape& r){ return r.getGlobalBounds().contains(mousePos); };
+                if (m_showMultiplayerModal)
+                {
+                    if (inRect(m_modalHostBtn))
+                    {
+                        waitingForClient();
+                        m_modalStatusText.setString("waiting for client");
+                        auto sb2 = m_modalStatusText.getLocalBounds();
+                        m_modalStatusText.setOrigin(sf::Vector2f(sb2.position.x + sb2.size.x / 2.f, sb2.position.y + sb2.size.y / 2.f));
+                    }
+                    else if (inRect(m_modalJoinBtn))
+                    {
+                        waitingForHost();
+                        m_modalStatusText.setString("waiting for host");
+                        auto sb3 = m_modalStatusText.getLocalBounds();
+                        m_modalStatusText.setOrigin(sf::Vector2f(sb3.position.x + sb3.size.x / 2.f, sb3.position.y + sb3.size.y / 2.f));
+                    }
+                }
+                else
+                {
+                    if (inRect(m_menuOption1))
+                    {
+                        m_state = GameState::Playing;
+                        resetGame();
+                    }
+                    else if (inRect(m_menuOption2))
+                    {
+                        multiplayerMode();
+                        m_showMultiplayerModal = true;
+                    }
+                    else if (inRect(m_menuOption3))
+                    {
+                        // Before closing, reset any networking
+                        m_hostNet.reset();
+                        m_guestNet.reset();
+                        m_isNetworkedGame = false;
+                        m_isHost = false;
+                        m_window.close();
+                    }
+                }
+            }
+        }
+    }
 }
 
 void Game::update(double dt)
@@ -335,12 +355,58 @@ void Game::update(double dt)
 	// dt arrives in milliseconds; convert to seconds
 	float floatSeconds = static_cast<float>(dt) / 1000.f;
 
-	if (m_state == GameState::Playing && m_isNetworkedGame && !m_isHost) { // ensures guest doesn't run gameplay update logic
-		if (m_hasPrev && m_hasCurr) {
-			float interpSpeed = 60.0f; //60hz host
+	if (m_isNetworkedGame && !m_isHost) { // ensures guest doesn't run gameplay update logic
+		// Do not interpolate when not actively playing (e.g., in menu or game over)
+		if (m_state != GameState::Playing) {
+			return;
+		}
 
-			m_interpAlpha += interpSpeed * floatSeconds;
-			if (m_interpAlpha > 1.0f) m_interpAlpha = 1.0f;
+		if (m_hasPrev && m_hasCurr) {
+			// Time-based interpolation. Alpha is in [0,1].
+			m_interpAlpha += floatSeconds;
+			if (m_interpAlpha >= 1.0f) {
+				m_interpAlpha = 1.0f;
+				// Snap to current at completion and keep prev in sync to avoid drift
+				m_prevState = m_currState;
+			}
+
+			auto lerp = [](float a, float b, float alpha) {
+				return a + (b - a) * alpha;
+			};
+
+			float p1Y = lerp(m_prevState.p1Y, m_currState.p1Y, m_interpAlpha);
+			float p2Y = lerp(m_prevState.p2Y, m_currState.p2Y, m_interpAlpha);
+			float ballX = lerp(m_prevState.ballX, m_currState.ballX, m_interpAlpha);
+			float ballY = lerp(m_prevState.ballY, m_currState.ballY, m_interpAlpha);
+
+			m_leftPaddle.setPosition(sf::Vector2f(m_leftPaddle.getPosition().x, p1Y));
+			m_rightPaddle.setPosition(sf::Vector2f(m_rightPaddle.getPosition().x, p2Y));
+			m_ball.setPosition(sf::Vector2f(ballX, ballY));
+
+			m_leftScore = m_currState.p1Score;
+			m_rightScore = m_currState.p2Score;
+			m_leftScoreText.setString(std::to_string(m_leftScore));
+			m_rightScoreText.setString(std::to_string(m_rightScore));
+
+			// Check win conditions on guest side based on received scores
+			if (!m_gameOver) {
+				if (m_leftScore >= m_winScore) {
+					m_gameOver = true;
+					m_overlayText.setString("Player 1\nWins!\nPress Escape to\nReturn to Menu");
+					auto bounds = m_overlayText.getLocalBounds();
+					sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+					m_overlayText.setOrigin(origin);
+					m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+				}
+				else if (m_rightScore >= m_winScore) {
+					m_gameOver = true;
+					m_overlayText.setString("Player 2\nWins!\nPress Escape to\nReturn to Menu");
+					auto bounds = m_overlayText.getLocalBounds();
+					sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+					m_overlayText.setOrigin(origin);
+					m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+				}
+			}
 		}
 		return;
 	}
@@ -351,145 +417,149 @@ void Game::update(double dt)
 		return;
 	}
 
-	// If game over listen for space to restart
-	if (m_gameOver)
+	if (m_isHost || !m_isNetworkedGame)
 	{
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space))
-		{
-			resetGame();
-		}
-		return;
-	}
 
-	// Player input - left paddle: W/S, right paddle: Up/Down
-	if (!m_isNetworkedGame)
-	{
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+		// If game over listen for space to restart
+		if (m_gameOver)
 		{
-			m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
-		{
-			m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
-		{
-			m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
-		{
-			m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-		}
-	}
-	else {
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
-			sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
-		{
-			m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-		}
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S) ||
-			sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
-		{
-			m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space))
+			{
+				resetGame();
+			}
+			return;
 		}
 
-		//Moving networked player 2
-		if(m_isNetP2Up) {
-			m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
-		}
-		if(m_isNetP2Down) {
-			m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
-		}
-	}
-
-	// Keep paddles inside the screen
-	auto clampPaddle = [&](sf::RectangleShape& paddle)
+		// Player input - left paddle: W/S, right paddle: Up/Down
+		if (!m_isNetworkedGame)
 		{
-			if (paddle.getPosition().y < 0.f)
-				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
-			if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
-				paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
-		};
-	clampPaddle(m_leftPaddle);
-	clampPaddle(m_rightPaddle);
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+			{
+				m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+			}
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+			{
+				m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+			}
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+			{
+				m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+			}
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+			{
+				m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+			}
+		}
+		else {
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
+				sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+			{
+				m_leftPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+			}
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S) ||
+				sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+			{
+				m_leftPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+			}
 
-	// Move ball
-	m_ball.move(m_ballVelocity * floatSeconds);
-
-	// Ball collision with top/bottom
-	if (m_ball.getPosition().y <= 0.f)
-	{
-		m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, 0.f));
-		m_ballVelocity.y = -m_ballVelocity.y;
-	}
-	if (m_ball.getPosition().y + m_ball.getRadius() * 2.f >= (float)ScreenSize::s_height)
-	{
-		m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, (float)ScreenSize::s_height - m_ball.getRadius() * 2.f));
-		m_ballVelocity.y = -m_ballVelocity.y;
-	}
-
-	// Ball collision with paddles (AABB using positions and sizes)
-	{
-		auto ballPos = m_ball.getPosition();
-		auto ballSize = sf::Vector2f(m_ball.getRadius() * 2.f, m_ball.getRadius() * 2.f);
-
-		auto lp = m_leftPaddle.getPosition();
-		auto lsize = m_leftPaddle.getSize();
-		bool intersectsLeft = !(ballPos.x + ballSize.x < lp.x || ballPos.x > lp.x + lsize.x ||
-			ballPos.y + ballSize.y < lp.y || ballPos.y > lp.y + lsize.y);
-		if (intersectsLeft)
-		{
-			m_ball.setPosition(sf::Vector2f(lp.x + lsize.x + 0.1f, ballPos.y));
-			m_ballVelocity.x = std::abs(m_ballVelocity.x);
+			//Moving networked player 2
+			if (m_isNetP2Up) {
+				m_rightPaddle.move(sf::Vector2f(0.f, -m_paddleSpeed * floatSeconds));
+			}
+			if (m_isNetP2Down) {
+				m_rightPaddle.move(sf::Vector2f(0.f, m_paddleSpeed * floatSeconds));
+			}
 		}
 
-		auto rp = m_rightPaddle.getPosition();
-		auto rsize = m_rightPaddle.getSize();
-		bool intersectsRight = !(ballPos.x + ballSize.x < rp.x || ballPos.x > rp.x + rsize.x ||
-			ballPos.y + ballSize.y < rp.y || ballPos.y > rp.y + rsize.y);
-		if (intersectsRight)
+		// Keep paddles inside the screen
+		auto clampPaddle = [&](sf::RectangleShape& paddle)
+			{
+				if (paddle.getPosition().y < 0.f)
+					paddle.setPosition(sf::Vector2f(paddle.getPosition().x, 0.f));
+				if (paddle.getPosition().y + paddle.getSize().y > (float)ScreenSize::s_height)
+					paddle.setPosition(sf::Vector2f(paddle.getPosition().x, (float)ScreenSize::s_height - paddle.getSize().y));
+			};
+		clampPaddle(m_leftPaddle);
+		clampPaddle(m_rightPaddle);
+
+		// Move ball
+		m_ball.move(m_ballVelocity * floatSeconds);
+
+		// Ball collision with top/bottom
+		if (m_ball.getPosition().y <= 0.f)
 		{
-			m_ball.setPosition(sf::Vector2f(rp.x - ballSize.x - 0.1f, ballPos.y));
-			m_ballVelocity.x = -std::abs(m_ballVelocity.x);
+			m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, 0.f));
+			m_ballVelocity.y = -m_ballVelocity.y;
 		}
-	}
+		if (m_ball.getPosition().y + m_ball.getRadius() * 2.f >= (float)ScreenSize::s_height)
+		{
+			m_ball.setPosition(sf::Vector2f(m_ball.getPosition().x, (float)ScreenSize::s_height - m_ball.getRadius() * 2.f));
+			m_ballVelocity.y = -m_ballVelocity.y;
+		}
 
-	// Ball out of bounds - simple reset and score
-	if (m_ball.getPosition().x < -50.f)
-	{
-		// right player scores
-		m_rightScore++;
-		m_rightScoreText.setString(std::to_string(m_rightScore));
-		m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
-		m_ballVelocity = sf::Vector2f(-400.f, -250.f);
-	}
-	else if (m_ball.getPosition().x > (float)ScreenSize::s_width + 50.f)
-	{
-		// left player scores
-		m_leftScore++;
-		m_leftScoreText.setString(std::to_string(m_leftScore));
-		m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
-		m_ballVelocity = sf::Vector2f(400.f, 250.f);
-	}
+		// Ball collision with paddles (AABB using positions and sizes)
+		{
+			auto ballPos = m_ball.getPosition();
+			auto ballSize = sf::Vector2f(m_ball.getRadius() * 2.f, m_ball.getRadius() * 2.f);
 
-	// Check win conditions
-	if (m_leftScore >= m_winScore)
-	{
-		m_gameOver = true;
-		m_overlayText.setString("Player 1\nWins!\nPress Space to\nRestart");
-		auto bounds = m_overlayText.getLocalBounds();
-		sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
-		m_overlayText.setOrigin(origin);
-		m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
-	}
-	else if (m_rightScore >= m_winScore)
-	{
-		m_gameOver = true;
-		m_overlayText.setString("Player 2\nWins!\nPress Space to\nRestart");
-		auto bounds = m_overlayText.getLocalBounds();
-		sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
-		m_overlayText.setOrigin(origin);
-		m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+			auto lp = m_leftPaddle.getPosition();
+			auto lsize = m_leftPaddle.getSize();
+			bool intersectsLeft = !(ballPos.x + ballSize.x < lp.x || ballPos.x > lp.x + lsize.x ||
+				ballPos.y + ballSize.y < lp.y || ballPos.y > lp.y + lsize.y);
+			if (intersectsLeft)
+			{
+				m_ball.setPosition(sf::Vector2f(lp.x + lsize.x + 0.1f, ballPos.y));
+				m_ballVelocity.x = std::abs(m_ballVelocity.x);
+			}
+
+			auto rp = m_rightPaddle.getPosition();
+			auto rsize = m_rightPaddle.getSize();
+			bool intersectsRight = !(ballPos.x + ballSize.x < rp.x || ballPos.x > rp.x + rsize.x ||
+				ballPos.y + ballSize.y < rp.y || ballPos.y > rp.y + rsize.y);
+			if (intersectsRight)
+			{
+				m_ball.setPosition(sf::Vector2f(rp.x - ballSize.x - 0.1f, ballPos.y));
+				m_ballVelocity.x = -std::abs(m_ballVelocity.x);
+			}
+		}
+
+		// Ball out of bounds - simple reset and score
+		if (m_ball.getPosition().x < -50.f)
+		{
+			// right player scores
+			m_rightScore++;
+			m_rightScoreText.setString(std::to_string(m_rightScore));
+			m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
+			m_ballVelocity = sf::Vector2f(-400.f, -250.f);
+		}
+		else if (m_ball.getPosition().x > (float)ScreenSize::s_width + 50.f)
+		{
+			// left player scores
+			m_leftScore++;
+			m_leftScoreText.setString(std::to_string(m_leftScore));
+			m_ball.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f - m_ball.getRadius(), (float)ScreenSize::s_height / 2.f - m_ball.getRadius()));
+			m_ballVelocity = sf::Vector2f(400.f, 250.f);
+		}
+
+		// Check win conditions
+		if (m_leftScore >= m_winScore)
+		{
+			m_gameOver = true;
+			m_overlayText.setString("Player 1\nWins!\nPress Space to\nRestart");
+			auto bounds = m_overlayText.getLocalBounds();
+			sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+			m_overlayText.setOrigin(origin);
+			m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+		}
+		else if (m_rightScore >= m_winScore)
+		{
+			m_gameOver = true;
+			m_overlayText.setString("Player 2\nWins!\nPress Space to\nRestart");
+			auto bounds = m_overlayText.getLocalBounds();
+			sf::Vector2f origin(bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f);
+			m_overlayText.setOrigin(origin);
+			m_overlayText.setPosition(sf::Vector2f((float)ScreenSize::s_width / 2.f, (float)ScreenSize::s_height / 2.f));
+		}
 	}
 }
 
@@ -522,28 +592,6 @@ void Game::render()
 		return;
 	}
 	
-	// If guest in networked game, interpolate between previous and current state
-	if(m_state == GameState::Playing && m_isNetworkedGame && !m_isHost) {
-		if (m_hasPrev && m_hasCurr) {
-			auto lerp = [](float a, float b, float alpha) {
-				return a + (b - a) * alpha;
-				};
-
-			float p1Y = lerp(m_prevState.p1Y, m_currState.p1Y, m_interpAlpha);
-			float p2Y = lerp(m_prevState.p2Y, m_currState.p2Y, m_interpAlpha);
-			float ballX = lerp(m_prevState.ballX, m_currState.ballX, m_interpAlpha);
-			float ballY = lerp(m_prevState.ballY, m_currState.ballY, m_interpAlpha);
-
-			m_leftPaddle.setPosition(sf::Vector2f(m_leftPaddle.getPosition().x, p1Y));
-			m_rightPaddle.setPosition(sf::Vector2f(m_rightPaddle.getPosition().x, p2Y));
-			m_ball.setPosition(sf::Vector2f(ballX, ballY));
-
-			m_leftScore = m_currState.p1Score;
-			m_rightScore = m_currState.p2Score;
-			m_leftScoreText.setString(std::to_string(m_leftScore));
-			m_rightScoreText.setString(std::to_string(m_rightScore));
-		}
-	}
 	m_window.draw(m_centerLine);
 	m_window.draw(m_leftPaddle);
 	m_window.draw(m_rightPaddle);
@@ -585,29 +633,35 @@ void Game::waitingForClient()
 
 void Game::waitingForHost()
 {
-	m_isNetworkedGame = true;
-	m_isHost = false;
-	
-	// Bind guest UDP socket on auto-assigned port
-	if(!m_guestNet.bind(0))
-	{
-		m_modalStatusText.setString("Error: Could not bind to port");
-		auto bounds = m_modalStatusText.getLocalBounds();
-		m_modalStatusText.setOrigin(sf::Vector2f(bounds.position.x + bounds.size.x / 2.f,
-			bounds.position.y + bounds.size.y / 2.f));
-		return;
-	}
+    m_isNetworkedGame = true;
+    m_isHost = false;
+    
+    // Bind guest UDP socket on auto-assigned port
+    if(!m_guestNet.bind(0))
+    {
+        m_modalStatusText.setString("Error: Could not bind to port");
+        auto bounds = m_modalStatusText.getLocalBounds();
+        m_modalStatusText.setOrigin(sf::Vector2f(bounds.position.x + bounds.size.x / 2.f,
+            bounds.position.y + bounds.size.y / 2.f));
+        return;
+    }
 
-	// First broadcast attempt
-	const unsigned short discoveryPort = 54000;
-	m_guestNet.sendFindHost(discoveryPort);
+    // First broadcast attempt
+    const unsigned short discoveryPort = 54000;
+    m_guestNet.sendFindHost(discoveryPort);
 
-	// Switch to waiting joining lobby
-	m_state = GameState::JoiningLobby;
-	m_modalStatusText.setString("Searching for host on port " + std::to_string(discoveryPort) + "...");
-	auto bounds = m_modalStatusText.getLocalBounds();
-	m_modalStatusText.setOrigin(sf::Vector2f(bounds.position.x + bounds.size.x / 2.f,
-		bounds.position.y + bounds.size.y / 2.f));
+    // reset discovery timer so we can throttle subsequent broadcasts in JoiningLobby
+    m_discoveryClock.restart();
+    m_lastDiscovery = sf::Time::Zero;
+
+    m_sentHello = false; // reset handshake progress
+
+    // Switch to waiting joining lobby
+    m_state = GameState::JoiningLobby;
+    m_modalStatusText.setString("Searching for host on port " + std::to_string(discoveryPort) + "...");
+    auto bounds = m_modalStatusText.getLocalBounds();
+    m_modalStatusText.setOrigin(sf::Vector2f(bounds.position.x + bounds.size.x / 2.f,
+        bounds.position.y + bounds.size.y / 2.f));
 }
 
 void Game::lookingForClient()
@@ -628,42 +682,64 @@ void Game::lookingForClient()
 
 void Game::lookingForHost()
 {
-	const unsigned short discoveryPort = 54000;
+    const unsigned short discoveryPort = 54000;
 
-	//Listen for host discovery responses
-	m_guestNet.sendFindHost(discoveryPort);
+    // Throttle discovery broadcast to once every 5 seconds while in JoiningLobby
+    // Only broadcast while we haven't sent HELLO yet
+    if (!m_sentHello)
+    {
+        sf::Time now = m_discoveryClock.getElapsedTime();
+        if (now - m_lastDiscovery >= sf::seconds(5))
+        {
+            m_guestNet.sendFindHost(discoveryPort);
+            m_lastDiscovery = now;
+        }
+    }
 
-	IpAddress hostAddr{IpAddress::Any};
-	unsigned short hostPort{ 0 };
+    IpAddress hostAddr{IpAddress::Any};
+    unsigned short hostPort{ 0 };
 
-	//Check for HOST_HERE
-	if(m_guestNet.recieveHostHere(hostAddr, hostPort)) {
-		//Connected to host
-		m_modalStatusText.setString("Host Found! Connecting...");
-		auto sb = m_modalStatusText.getLocalBounds();
-		m_modalStatusText.setOrigin(sf::Vector2f(sb.position.x + sb.size.x / 
-			2.f, sb.position.y + sb.size.y / 2.f));
+    //Check for HOST_HERE
+    //Check for HOST_HERE only until we've sent HELLO
+    if (!m_sentHello)
+    {
+        if (m_guestNet.recieveHostHere(hostAddr, hostPort)) {
+            //Connected to host discovery
+            m_modalStatusText.setString("Host Found! Connecting...");
+            auto sb = m_modalStatusText.getLocalBounds();
+            m_modalStatusText.setOrigin(sf::Vector2f(sb.position.x + sb.size.x / 
+                2.f, sb.position.y + sb.size.y / 2.f));
 
-		//Send HELLO to host
-		m_guestNet.sendHello();
-	}
+            //Send HELLO to host (only once)
+            if (!m_sentHello) {
+                m_guestNet.sendHello();
+                m_sentHello = true;
+            }
+        }
+    // Do NOT return here; keep polling for HELLO_ACK even if HOST_HERE wasn’t received this frame
+        else {
+            cout << "No host found yet.\n";
+            return; //No host found yet
+        }
+    }
+    // Do NOT return here; keep polling for HELLO_ACK after HELLO was sent
 
-	//Wait for HELLO_ACK from host
-	if(m_guestNet.recieveHelloAck()) {
-		// Successfully connected to host
-		m_modalStatusText.setString("Connected to host!");
-		auto sb = m_modalStatusText.getLocalBounds();
-		m_modalStatusText.setOrigin(sf::Vector2f(sb.position.x + sb.size.x /
-			2.f, sb.position.y + sb.size.y / 2.f));
+    //Wait for HELLO_ACK from host (poll every frame after HELLO was sent)
+    if (m_sentHello && m_guestNet.recieveHelloAck()) {
+        // Successfully connected to host
+        m_modalStatusText.setString("Connected to host!");
+        auto sb2 = m_modalStatusText.getLocalBounds();
+        m_modalStatusText.setOrigin(sf::Vector2f(sb2.position.x + sb2.size.x /
+            2.f, sb2.position.y + sb2.size.y / 2.f));
 
-		//Connection complete, start game
-		m_state = GameState::Playing;
-		m_hasPrev = false;
-		m_hasCurr = false;
-		resetGame();
+        //Connection complete, start game
+        m_state = GameState::Playing;
+        m_hasPrev = false;
+        m_hasCurr = false;
+        resetGame();
 
-		m_showMultiplayerModal = false;
-	}
+        m_showMultiplayerModal = false;
+    }
 }
 
 void Game::recieveNetworkState()
@@ -674,14 +750,32 @@ void Game::recieveNetworkState()
 		return;
 	}
 
-	if (!m_hasCurr || incoming.seqNum > m_currState.seqNum) { //only accept newer states
-		m_prevState = m_currState;
-		m_currState = incoming;
+	// Only accept newer states
+	if (!m_hasCurr || incoming.seqNum > m_currState.seqNum) {
+		if (!m_hasCurr) {
+			// First packet: snap directly to incoming and initialize interpolation buffers
+			m_currState = incoming;
+			m_prevState = incoming;
+			m_hasCurr = true;
+			m_hasPrev = true;
+			m_interpAlpha = 0.f;
 
-		m_hasPrev = m_hasCurr;
-		m_hasCurr = true;
-
-		m_interpAlpha = 0.f; //reset interpolation alpha
+			// Apply state immediately so guest view is consistent
+			m_leftPaddle.setPosition(sf::Vector2f(m_leftPaddle.getPosition().x, m_currState.p1Y));
+			m_rightPaddle.setPosition(sf::Vector2f(m_rightPaddle.getPosition().x, m_currState.p2Y));
+			m_ball.setPosition(sf::Vector2f(m_currState.ballX, m_currState.ballY));
+			m_leftScore = m_currState.p1Score;
+			m_rightScore = m_currState.p2Score;
+			m_leftScoreText.setString(std::to_string(m_leftScore));
+			m_rightScoreText.setString(std::to_string(m_rightScore));
+		} else {
+			// Normal path: advance buffers for interpolation
+			m_prevState = m_currState;
+			m_currState = incoming;
+			m_hasPrev = true;
+			m_hasCurr = true;
+			m_interpAlpha = 0.f; // reset interpolation alpha
+		}
 	}
 }
 

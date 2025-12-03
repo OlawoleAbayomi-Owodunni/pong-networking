@@ -24,6 +24,9 @@ public:
 	IpAddress getHostAddress() const { return m_hostAddress; }
 	unsigned short getHostPort() const { return m_hostPort; }
 
+	// Reset all internal state and socket to defaults
+	void reset();
+
 private:
 	UdpSocket m_socket;
 

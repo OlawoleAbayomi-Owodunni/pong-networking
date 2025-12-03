@@ -49,6 +49,9 @@ public:
 	//check if guest is still connected
 	bool isGuestConnected() const { return m_hasGuest; }
 
+	// Reset all internal state and socket to defaults
+	void reset();
+
 private:
 	UdpSocket m_socket;
 
